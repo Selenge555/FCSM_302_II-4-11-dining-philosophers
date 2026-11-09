@@ -249,6 +249,7 @@ nav.bottom .where{flex:1;text-align:center;color:var(--muted);font-size:14px;fon
       <button type="button" data-preset="fast">Хурдан demo</button>
       <button type="button" data-preset="many">12 philosopher</button>
       <button type="button" data-preset="deadlock">Deadlock demo</button>
+      <button type="button" data-preset="starve" title="monitor, n=12, бодох хугацаа 0: тэгш дугаартай philosopher-ууд бараг иддэггүй — starvation-ийн анхааруулгыг харуулна">Starvation demo</button>
     </div>
     <label for="algo">Алгоритм</label>
     <select id="algo">
@@ -371,7 +372,10 @@ function mountReal(root) {
     book:     { algo: 'monitor', n: 5,  tmin: 1000, tmax: 3000, emin: 1000, emax: 3000, dur: 20000, seed: 1, grab: 100 },
     fast:     { algo: 'monitor', n: 5,  tmin: 150,  tmax: 500,  emin: 150,  emax: 500,  dur: 15000, seed: 1, grab: 100 },
     many:     { algo: 'monitor', n: 12, tmin: 200,  tmax: 700,  emin: 200,  emax: 700,  dur: 15000, seed: 7, grab: 100 },
-    deadlock: { algo: 'naive',   n: 5,  tmin: 0,    tmax: 0,    emin: 300,  emax: 600,  dur: 8000,  seed: 1, grab: 300 }
+    deadlock: { algo: 'naive',   n: 5,  tmin: 0,    tmax: 0,    emin: 300,  emax: 600,  dur: 8000,  seed: 1, grab: 300 },
+    /* monitor-ийн starvation: think=0 ба тэгш n үед сондгой philosopher-ууд ээлжлэн давамгайлж,
+     * тэгш дугаартайнууд бараг иддэггүй (docs/Report.docx, 8–9-р хэсэг) */
+    starve:   { algo: 'monitor', n: 12, tmin: 0,    tmax: 0,    emin: 10,   emax: 50,   dur: 10000, seed: 1, grab: 100 }
   };
 
   var destroyed = false;

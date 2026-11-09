@@ -21,6 +21,8 @@ browser-based интерактив UI (state diagram) дээр дүрсэлнэ.
 │   ├── index.html    # 5 алхамтай UI: Танилцуулга → Дүрэм → Deadlock → Шийдэл → Бодит туршилт (state diagram)
 │   ├── model.js       # DOM-гүй логик (ui/node хоёуланд ашиглагдана)
 │   └── server.py       # localhost-д ажилладаг NDJSON streaming сервер
+├── tools/
+│   └── experiment.py   # урт хугацааны fairness туршилт (UI-гүй), CSV/JSON гаралт
 ├── tests/
 │   ├── check_log.py    # dp-ийн гаралтын инвариант шалгагч
 │   ├── check_fairness.py # end event-ийн fairness талбарыг дахин тооцож тулгах шалгагч
@@ -30,6 +32,7 @@ browser-based интерактив UI (state diagram) дээр дүрсэлнэ.
 │   └── examples/          # жишээ гаралт (.jsonl) лог файлууд
 └── docs/
     ├── Report.pdf / Report.docx     # Эцсийн тайлан (заавал PDF)
+    ├── experiments/                 # tools/experiment.py-ийн урт туршилтын үр дүн (CSV, UI-д импортлох JSON)
     ├── Manual.pdf / Manual.docx     # Эцсийн Manual (заавал PDF)
     └── figures/                     # Тайланд ашигласан бодит screenshot-ууд
 ```
@@ -115,6 +118,21 @@ min/max) харагдана. Графикийн нэг шугам нь ижил 
 цуврал"** товч одоогийн тохиргоогоор дөрвөн туршилтыг дараалан ажиллуулна.
 CSV (Excel-д кирилл зөв) болон JSON экспорт/импорт боломжтой.
 
+**Урт хугацааны туршилт.** `tools/experiment.py` нь `build/dp`-г N = 5, 12, 32, 64 ×
+seed × тохиргоогоор (анхдагч 60 с) ажиллуулж, бүрэн event логоос хүлээлтийн
+тархалт (p50/p95/p99/max) ба philosopher бүрийн хоолгүй үргэлжилсэн хамгийн урт
+хугацааг тооцно. JSON гаралтыг UI-ийн "JSON оруулах"-аар шууд импортлож болно.
+
+```bash
+python3 tools/experiment.py --dur 60000 --jobs 2 \
+    --csv docs/experiments/long_runs.csv --json docs/experiments/long_runs.json
+```
+
+Үр дүн (`docs/experiments/`, `docs/Report.docx` 8–9-р хэсэг): хэвийн ачааллын үед
+monitor шударга (Jain ≈ 1), харин **бодох хугацаа 0 ба philosopher-ийн тоо тэгш**
+үед тэгш дугаартай philosopher-ууд бараг огт иддэггүй (starvation, Jain ≈ 0.5).
+UI-ийн **"Starvation demo"** preset үүнийг шууд харуулна.
+
 ## Known issues
 
 - `naive` алгоритм нь тохирсон тохиргоонд **санаатайгаар** deadlock-д ордог
@@ -123,9 +141,10 @@ CSV (Excel-д кирилл зөв) болон JSON экспорт/импорт �
   ажиллагаа. Харин `grab-delay=0` үед эсрэгээр — deadlock биш, ноцтой
   starvation ажиглагддаг (`docs/Report.docx`, 9-р хэсэг).
 - `monitor` алгоритм нь сурах бичгийн дагуу deadlock-гүй ч **starvation-аас
-  бүрэн хамгаалдаггүй** (онолын хувьд боломжтой) — `make test`-ийн богино
-  шалгалт үүнийг "баталгаажуулдаггүй", зөвхөн тухайн ажиллагаанд ажиглагдаагүйг
-  л харуулдаг.
+  хамгаалдаггүй**: бодох хугацаа 0 ба тэгш тооны philosopher-той үед тэгш
+  дугаартай philosopher-ууд бараг иддэггүй (урт туршилтаар батлагдсан, дээрх
+  "Шударга байдлын шинжилгээ" ба `docs/Report.docx` 9-р хэсэг). Алгоритмыг сурах
+  бичгийнхээр үлдээсэн; засах арга (aging/FIFO) тайланд тайлбарлагдсан.
 - UI сервер зөвхөн `127.0.0.1`-д сонсдог (аюулгүй байдлын үүднээс гадаад сүлжээнээс
   хандах боломжгүй).
 - **ЗАСАГДСАН (гадаад шүүмжийн Major #1):** өмнө нь Stop товч дарсан/tab хаасан ч
