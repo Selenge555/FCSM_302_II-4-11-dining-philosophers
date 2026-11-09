@@ -187,6 +187,40 @@ nav.bottom .where{flex:1;text-align:center;color:var(--muted);font-size:14px;fon
   #real button { font-family:inherit; }
   #real button:not(.primary):not(.danger) { color:var(--ink); }
 
+  /* ---------- Гадаад шүүмж (IV-2-14): starvation-ийн эрсдэл, fairness, туршилтын түүх ---------- */
+  #real { --warn:#b45309; --warn-bg:#fff7e6; }
+  #real input[type=checkbox] { width:auto; margin:0; }
+  #real .chk { display:inline-flex; align-items:center; gap:6px; margin:0; font-size:12px; color:var(--muted); }
+  #real .wrow { display:flex; align-items:center; gap:8px; flex-wrap:wrap; margin-top:2px; }
+  #real .wrow input[type=number] { width:96px; }
+  #real #wlist { list-style:none; margin:8px 0 0; padding:0; font-size:13px; }
+  #real #wlist li { display:flex; justify-content:space-between; padding:3px 6px; border-radius:4px; background:var(--warn-bg); color:var(--warn); font-weight:600; margin-top:3px; font-variant-numeric:tabular-nums; }
+  #real #wlist li.none { background:none; color:var(--muted); font-weight:400; padding-left:0; }
+  #real .wnote { font-size:12px; line-height:1.45; color:var(--muted); margin:8px 0 0; padding:7px 9px; border-left:3px solid var(--line); background:#f7f9fb; border-radius:4px; }
+  #real .wnote.on { border-left-color:var(--warn); background:var(--warn-bg); color:var(--ink); }
+  #real td.wflag { color:var(--warn); font-weight:700; text-align:center; cursor:help; }
+  #real td.wflag.past { opacity:.5; }
+  #real #fairsum { display:grid; grid-template-columns:repeat(2, minmax(0,1fr)); gap:6px 12px; margin-top:10px; font-size:12px; color:var(--muted); }
+  #real #fairsum b { display:block; font-size:16px; color:var(--ink); font-variant-numeric:tabular-nums; }
+  #real #fairsum:empty { display:none; }
+  #real #history { margin-top:14px; }
+  #real #history .sub { font-size:13px; color:var(--muted); margin:-2px 0 10px; }
+  #real .hbtns { display:flex; gap:6px; flex-wrap:wrap; align-items:center; }
+  #real .hbtns button, #real .filebtn { font-size:12px; padding:4px 9px; }
+  #real .filebtn { display:inline-block; margin:0; border:1px solid var(--line); border-radius:5px; background:#fff; cursor:pointer; color:var(--ink); }
+  #real .filebtn input { display:none; }
+  #real .hchart { display:flex; align-items:center; gap:8px; flex-wrap:wrap; }
+  #real .hchart label { margin:0; }
+  #real .hchart select { width:auto; }
+  #real #hcanvas { display:block; width:100%; height:280px; margin-top:8px; }
+  #real #hlegend { list-style:none; padding:0; margin:6px 0 4px; display:flex; flex-wrap:wrap; gap:4px 16px; font-size:12px; color:var(--muted); }
+  #real #hlegend i { display:inline-block; width:10px; height:10px; border-radius:50%; margin-right:6px; vertical-align:-1px; }
+  #real .hscroll { overflow-x:auto; }
+  #real #htable td, #real #htable th { white-space:nowrap; font-variant-numeric:tabular-nums; }
+  #real #htable td.bad { color:var(--bad); }
+  #real #htable .del { border:0; background:none; padding:0 4px; color:var(--muted); }
+  #real #htable .empty { text-align:center; color:var(--muted); padding:14px; }
+
 </style>
 </head>
 <body>
@@ -238,6 +272,9 @@ nav.bottom .where{flex:1;text-align:center;color:var(--muted);font-size:14px;fon
       <button id="stop" class="danger" type="button" disabled>■ Зогсоох</button>
       <button id="reset" type="button">↺ Reset</button>
     </div>
+    <div class="btns">
+      <button id="series" type="button" title="Одоогийн бодох/идэх/хугацааны тохиргоогоор N = 5, 12, 32, 64-ийг дараалан ажиллуулж, туршилтын түүхэд хадгална">▶▶ N = 5, 12, 32, 64 цуврал</button>
+    </div>
     <ul id="errors" aria-live="polite"></ul>
   </section>
 
@@ -270,9 +307,20 @@ nav.bottom .where{flex:1;text-align:center;color:var(--muted);font-size:14px;fon
       </div>
       <div id="status">Бэлэн.</div>
     </div>
+    <div class="card" style="margin-top:14px" id="wcard">
+      <h2>Удаан хүлээлт — starvation-ийн эрсдэл</h2>
+      <label for="wthr">Анхааруулах босго (мс)</label>
+      <div class="wrow">
+        <input id="wthr" type="number" min="1" step="100" disabled>
+        <label class="chk"><input id="wauto" type="checkbox" checked> авто (4 × идэх max)</label>
+      </div>
+      <ul id="wlist" aria-live="polite"></ul>
+      <p class="wnote" id="wnote"></p>
+    </div>
     <div class="card" style="margin-top:14px">
       <h2>Статистик (ажиллагаа дууссаны дараа)</h2>
-      <table id="stats"><thead><tr><th>Phil</th><th>Хоол</th><th>Дундаж хүлээлт мс</th><th>Дээд хүлээлт мс</th><th title="Ажиллагаа дуусах мөчид philosopher ХЭВЭЭР hungry байсан бол хэдий хугацаа хүлээснийг харуулна (starvation илрүүлэх)">Дуусахад hungry (мс)</th></tr></thead><tbody></tbody></table>
+      <table id="stats"><thead><tr><th>Phil</th><th>Хоол</th><th>Дундаж хүлээлт мс</th><th>Дээд хүлээлт мс</th><th title="Ажиллагаа дуусах мөчид philosopher ХЭВЭЭР hungry байсан бол хэдий хугацаа хүлээснийг харуулна (starvation илрүүлэх)">Дуусахад hungry (мс)</th><th title="Ажиллагааны явцад анхааруулах босгоос удаан hungry байсан (starvation-ийн эрсдэл, батлагдаагүй)">⚠</th></tr></thead><tbody></tbody></table>
+      <div id="fairsum"></div>
     </div>
     <div class="card" style="margin-top:14px">
       <h2>Event лог</h2>
@@ -280,6 +328,34 @@ nav.bottom .where{flex:1;text-align:center;color:var(--muted);font-size:14px;fon
     </div>
   </section>
 </div>
+<section class="card" id="history">
+  <h2 class="rhead"><span>Туршилтын түүх ба харьцуулалт</span>
+    <span class="hbtns">
+      <label class="chk"><input id="hauto" type="checkbox" checked> Дуусахад автоматаар хадгалах</label>
+      <button id="hcsv" type="button">CSV татах</button>
+      <button id="hjson" type="button">JSON татах</button>
+      <label class="filebtn">JSON оруулах<input id="himport" type="file" accept=".json,application/json"></label>
+      <button id="hclear" type="button" class="danger">Бүгдийг устгах</button>
+    </span>
+  </h2>
+  <div class="sub">Дууссан туршилт бүр энэ хөтөчид (localStorage) хадгалагдана. Графикийн нэг шугам = ижил алгоритм ба бодох/идэх/хугацааны тохиргоо — зөвхөн philosopher-ийн тоо (N) өөр туршилтуудыг л холбоно; ижил N-ийн давталтыг дундажлана.</div>
+  <div class="hchart">
+    <label for="hmetric">Үзүүлэлт</label>
+    <select id="hmetric">
+      <option value="mealsPerPhil">Нэг philosopher-ийн дундаж хооллолт</option>
+      <option value="throughput">Throughput (хооллолт / сек)</option>
+      <option value="avgWait">Дундаж хүлээлт (мс)</option>
+      <option value="maxWait">Хамгийн их хүлээлт (мс)</option>
+      <option value="jain">Jain-ийн шударга байдлын индекс</option>
+      <option value="minMax">min / max хооллолтын харьцаа</option>
+    </select>
+  </div>
+  <canvas id="hcanvas" role="img" aria-label="Philosopher-ийн тоо ба сонгосон үзүүлэлтийн график"></canvas>
+  <ul id="hlegend"></ul>
+  <div class="hscroll">
+    <table id="htable"><thead><tr><th>Алгоритм</th><th>N</th><th>Бодох мс</th><th>Идэх мс</th><th>Хугацаа мс</th><th>Төгсгөл</th><th>Хоол</th><th>Хоол/phil</th><th>Хоол/сек</th><th>Дундаж хүлээлт</th><th>Max хүлээлт</th><th>Jain</th><th>min/max</th><th>⚠</th><th></th></tr></thead><tbody></tbody></table>
+  </div>
+</section>
 </div>
 </template>
 
@@ -302,6 +378,24 @@ function mountReal(root) {
   var events = [], snaps = [], running = false, live = true, view = 0, ctrl = null, endEvent = null;
   var renderQueued = false, curN = 5;
 
+  /* ---- Гадаад шүүмж (IV-2-14): starvation-ийн эрсдэл ба туршилтын түүх ----
+   * wstates[i] = i event-ийн дараах "hungry эхэлсэн мөч"-ийн төлөв (snaps-тэй
+   * зэрэгцээ, тиймээс replay-д ч анхааруулга зөв харагдана). warned = энэ
+   * ажиллагааны явцад босгоос удаан хүлээсэн philosopher-ууд. */
+  var wstates = [], warned = {}, runParams = null;
+  var autoThr = true, thr = M.defaultWarnThreshold(null);
+  var lastEvWall = 0, tick = null, seriesQueue = [], seriesActive = false;
+  var store = M.makeRunStore(safeStorage()), hMetric = 'mealsPerPhil';
+  function safeStorage() {
+    try { var s = window.localStorage; s.setItem('__dp', '1'); s.removeItem('__dp'); return s; }
+    catch (e) { return null; }   /* private mode г.м. — санах ойд л хадгална */
+  }
+  function fmt(v, digits) {
+    if (v === null || v === undefined || !isFinite(v)) return '—';
+    if (digits !== undefined) return v.toFixed(digits);
+    return Math.abs(v) >= 100 ? String(Math.round(v)) : v.toFixed(1);
+  }
+
   function readForm() {
     var p = { algo: $('algo').value };
     FIELDS.forEach(function (k) { p[k] = $(k).value; });
@@ -311,6 +405,16 @@ function mountReal(root) {
     $('algo').value = p.algo;
     FIELDS.forEach(function (k) { $(k).value = p[k]; });
     syncGrab();
+    refreshAutoThr();
+  }
+  /* "авто" босго = 4 × идэх max; тохиргоо өөрчлөгдөхөд дагаж шинэчлэгдэнэ */
+  function refreshAutoThr() {
+    if (!autoThr || running) return;
+    thr = M.defaultWarnThreshold({ emax: $('emax').value });
+    syncThr();
+  }
+  function syncThr() {
+    $('wthr').value = Math.round(thr); $('wthr').disabled = autoThr; $('wauto').checked = autoThr;
   }
   function syncGrab() { $('grab').disabled = running || $('algo').value !== 'naive'; }
   function setInputsDisabled(d) {
@@ -372,8 +476,9 @@ function mountReal(root) {
     built.n = n;
   }
 
-  function draw(snap) {
+  function draw(snap, ws, now) {
     var n = snap.states.length, cx = built.cx, cy = built.cy, R = built.R;
+    var waits = ws ? M.hungryWaits(ws, now) : null;
     if (built.n !== n) buildSvgStructure(n);
     var pr = M.philRadius(n, R);
 
@@ -395,9 +500,13 @@ function mountReal(root) {
       var c = built.phils[i];
       c.setAttribute('cx', pp.x); c.setAttribute('cy', pp.y); c.setAttribute('r', pr);
       c.setAttribute('fill', M.COLORS[st]);
-      c.setAttribute('stroke', snap.deadlock ? '#d64545' : '#1f2933');
-      c.setAttribute('stroke-width', snap.deadlock ? 4 : 2);
-      built.philTitles[i].textContent = 'P' + i + ': ' + st;
+      /* босгоос удаан hungry -> хүрэн тасархай хүрээ (deadlock-ийн улаан давуу) */
+      var wl = waits && waits[i] ? waits[i] : 0, isW = !snap.deadlock && wl >= thr;
+      c.setAttribute('stroke', snap.deadlock ? '#d64545' : (isW ? '#b45309' : '#1f2933'));
+      c.setAttribute('stroke-width', snap.deadlock || isW ? 4 : 2);
+      c.setAttribute('stroke-dasharray', isW ? '6 4' : 'none');
+      built.philTitles[i].textContent = 'P' + i + ': ' + st +
+        (wl > 0 ? ' · ' + Math.round(wl) + ' мс хүлээж байна' : '') + (isW ? ' ⚠ (starvation-ийн эрсдэл)' : '');
       var t = built.philTexts[i];
       t.setAttribute('x', pp.x); t.setAttribute('y', pp.y + 1);
       t.setAttribute('font-size', Math.min(15, pr * 0.62));
@@ -420,14 +529,125 @@ function mountReal(root) {
   }
   function renderStats() {
     var tb = $('stats').tBodies[0]; tb.textContent = '';
+    var fs = $('fairsum'); fs.textContent = '';
     if (!endEvent) return;
     M.statsRows(endEvent).forEach(function (r) {
       var tr = document.createElement('tr');
       [ 'P' + r.id, r.meals, r.avg, r.max, r.final ].forEach(function (v) {
         var td = document.createElement('td'); td.textContent = v; tr.appendChild(td);
       });
+      var tw = document.createElement('td'); tw.className = 'wflag';
+      if (warned[r.id]) {
+        tw.textContent = '⚠';
+        tw.title = Math.round(thr) + ' мс-ээс удаан hungry байсан — starvation-ийн эрсдэл (батлагдаагүй)';
+      }
+      tr.appendChild(tw);
       tb.appendChild(tr);
     });
+    /* Шударга байдлын хураангуй (dp.c-ийн src/fairness.h-ийн тооцсон утга) */
+    var f = M.fairnessSummary(endEvent);
+    [['Jain индекс (хоол)', fmt(f.jain, 3), '1 = бүгд тэнцүү идсэн, 1/n = ганцхан нь идсэн'],
+     ['min / max хоол', fmt(f.minMax, 3), '0 = хэн нэг нь огт идээгүй'],
+     ['Дундаж хүлээлт', fmt(f.avgWait) + ' мс', 'Бүх хооллолтын hungry → eating дундаж'],
+     ['Хамгийн их хүлээлт', fmt(f.maxWait) + ' мс' + (f.worstId >= 0 ? ' (P' + f.worstId + ')' : ''),
+      'Дуусахад hungry хэвээр байсан хүлээлтийг ч оруулна']
+    ].forEach(function (x) {
+      var d = document.createElement('div'), b = document.createElement('b');
+      d.title = x[2]; d.appendChild(document.createTextNode(x[0])); b.textContent = x[1];
+      d.appendChild(b); fs.appendChild(d);
+    });
+  }
+
+  /* ---------- Туршилтын түүх ба харьцуулах график (Suggestion 2) ---------- */
+  var PALETTE = ['#2b3f8c', '#d83a3a', '#1fa866', '#e8960c', '#7c3aed', '#0891b2', '#be185d', '#586475'];
+  function saveRun(ev) {
+    if (!runParams || !($('hauto').checked || seriesActive)) return;
+    store.add(M.runRecord(runParams, ev, Object.keys(warned).length, thr));
+    renderHistory();
+  }
+  function renderHistory() { if (destroyed) return;
+    var runs = store.all(), tb = $('htable').tBodies[0];
+    tb.textContent = '';
+    if (!runs.length) {
+      var tr0 = document.createElement('tr'), td0 = document.createElement('td');
+      td0.colSpan = 15; td0.className = 'empty';
+      td0.textContent = 'Хадгалсан туршилт алга — туршилт дуусахад энд нэмэгдэнэ.';
+      tr0.appendChild(td0); tb.appendChild(tr0);
+    }
+    runs.slice().sort(function (a, b) {
+      return M.seriesKey(a).localeCompare(M.seriesKey(b)) || a.n - b.n;
+    }).forEach(function (r) {
+      var tr = document.createElement('tr');
+      [r.algo, r.n, r.tmin + '–' + r.tmax, r.emin + '–' + r.emax, r.dur, r.reason, r.totalMeals,
+       fmt(r.mealsPerPhil), fmt(r.throughput), fmt(r.avgWait), fmt(r.maxWait), fmt(r.jain, 3), fmt(r.minMax, 3),
+       r.warnCount || ''].forEach(function (v, j) {
+        var td = document.createElement('td'); td.textContent = v;
+        if (j === 5 && v === 'deadlock') td.className = 'bad';
+        tr.appendChild(td);
+      });
+      var tdd = document.createElement('td'), del = document.createElement('button');
+      del.type = 'button'; del.className = 'del'; del.textContent = '✕'; del.title = 'Энэ туршилтыг устгах';
+      del.setAttribute('data-id', r.id); tdd.appendChild(del); tr.appendChild(tdd);
+      tb.appendChild(tr);
+    });
+    drawHistory(runs);
+  }
+  function niceCeil(v) {
+    var p = Math.pow(10, Math.floor(Math.log10(v))), steps = [1, 2, 2.5, 5, 10];
+    for (var i = 0; i < steps.length; i++) if (steps[i] * p >= v) return steps[i] * p;
+    return 10 * p;
+  }
+  function drawHistory(runs) {
+    var cv = $('hcanvas'), ctx = cv.getContext('2d'), dpr = window.devicePixelRatio || 1;
+    var W = cv.clientWidth || 600, H = cv.clientHeight || 280;
+    cv.width = Math.round(W * dpr); cv.height = Math.round(H * dpr);
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0); ctx.clearRect(0, 0, W, H);
+    var css = getComputedStyle(cv), ink = css.getPropertyValue('--ink').trim() || '#131a24';
+    var muted = css.getPropertyValue('--muted').trim() || '#586475', line = css.getPropertyValue('--line').trim() || '#dbe1e9';
+    ctx.font = '12px ' + (css.getPropertyValue('--font').trim() || 'system-ui');
+    var data = M.buildSeries(runs, hMetric), xs = data.xs, lg = $('hlegend');
+    lg.textContent = '';
+    if (!xs.length) {
+      ctx.fillStyle = muted; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+      ctx.fillText('Харьцуулах туршилт алга. "N = 5, 12, 32, 64 цуврал" товчоор хурдан цуглуулж болно.', W / 2, H / 2);
+      return;
+    }
+    var label = $('hmetric').options[$('hmetric').selectedIndex].text;
+    var pad = { l: 60, r: 18, t: 14, b: 44 }, w = W - pad.l - pad.r, h = H - pad.t - pad.b, yMax = 0;
+    data.series.forEach(function (s) { s.points.forEach(function (p) { yMax = Math.max(yMax, p.y); }); });
+    yMax = niceCeil(yMax || 1);
+    function X(i) { return pad.l + (xs.length === 1 ? w / 2 : i * w / (xs.length - 1)); }
+    function Y(v) { return pad.t + h - v / yMax * h; }
+    ctx.strokeStyle = line; ctx.lineWidth = 1; ctx.fillStyle = muted; ctx.textAlign = 'right'; ctx.textBaseline = 'middle';
+    for (var k = 0; k <= 4; k++) {
+      var gy = pad.t + h * k / 4;
+      ctx.beginPath(); ctx.moveTo(pad.l, gy); ctx.lineTo(pad.l + w, gy); ctx.stroke();
+      ctx.fillText(fmt(yMax * (1 - k / 4), yMax < 10 ? 2 : undefined), pad.l - 8, gy);
+    }
+    ctx.textAlign = 'center'; ctx.textBaseline = 'top';
+    xs.forEach(function (x, i) { ctx.fillText(String(x), X(i), pad.t + h + 6); });
+    ctx.fillStyle = ink; ctx.fillText('Philosopher-ийн тоо (N)', pad.l + w / 2, pad.t + h + 24);
+    ctx.save(); ctx.translate(14, pad.t + h / 2); ctx.rotate(-Math.PI / 2); ctx.textBaseline = 'middle';
+    ctx.fillText(label, 0, 0); ctx.restore();
+    data.series.forEach(function (s, si) {
+      var col = PALETTE[si % PALETTE.length];
+      ctx.strokeStyle = col; ctx.fillStyle = col; ctx.lineWidth = 2.5;
+      ctx.beginPath();
+      s.points.forEach(function (p, j) {
+        var px = X(xs.indexOf(p.n)), py = Y(p.y);
+        if (j === 0) ctx.moveTo(px, py); else ctx.lineTo(px, py);
+      });
+      ctx.stroke();
+      s.points.forEach(function (p) { ctx.beginPath(); ctx.arc(X(xs.indexOf(p.n)), Y(p.y), 4.5, 0, 2 * Math.PI); ctx.fill(); });
+      var li = document.createElement('li'), dot = document.createElement('i');
+      dot.style.background = col; li.appendChild(dot); li.appendChild(document.createTextNode(s.key)); lg.appendChild(li);
+    });
+  }
+  function download(name, text, type) {
+    var a = document.createElement('a');
+    a.href = URL.createObjectURL(new Blob([text], { type: type }));
+    a.download = name; document.body.appendChild(a); a.click();
+    setTimeout(function () { URL.revokeObjectURL(a.href); a.remove(); }, 0);
   }
   function updateControls() {
     var s = $('slider'), has = snaps.length > 1;
@@ -438,10 +658,34 @@ function mountReal(root) {
     $('next').disabled = !has || live || view >= snaps.length - 1;
     $('live').disabled = !has || live;
   }
+  /* Live үед event хүлээлгүй цаг урагшилна (жишээ нь урт идэх үед хөрш нь
+   * event гаргахгүй ч hungry хүлээлт өсөх ёстой). Replay үед event-ийн t. */
+  function liveNow(idx) {
+    if (!running || !live || idx !== snaps.length - 1 || !lastEvWall) return undefined;
+    return wstates[idx].t + (performance.now() - lastEvWall);
+  }
+  function renderWarn(ws, now, isLive) {
+    var list = M.waitWarnings(ws, thr, now);
+    if (isLive) list.forEach(function (w) { warned[w.id] = true; });
+    var ul = $('wlist'); ul.textContent = '';
+    if (!list.length) {
+      var li0 = document.createElement('li'); li0.className = 'none';
+      li0.textContent = 'Одоогоор ' + Math.round(thr) + ' мс-ээс удаан hungry байгаа philosopher алга.';
+      ul.appendChild(li0);
+    }
+    list.forEach(function (w) {
+      var li = document.createElement('li'), a = document.createElement('span'), b = document.createElement('span');
+      a.textContent = '⚠ P' + w.id; b.textContent = Math.round(w.waitMs) + ' мс hungry';
+      li.appendChild(a); li.appendChild(b); ul.appendChild(li);
+    });
+    $('wnote').classList.toggle('on', list.length > 0);
+  }
   function render() { if (destroyed) return;
     renderQueued = false;
     var idx = live ? snaps.length - 1 : view;
-    draw(snaps[idx] || M.emptySnapshot(curN));
+    var ws = wstates[idx] || M.emptyWaitState(curN), now = liveNow(idx);
+    draw(snaps[idx] || M.emptySnapshot(curN), ws, now);
+    renderWarn(ws, now, idx === snaps.length - 1);
     renderLog(idx);   /* snaps[i] = i event-ийн дараах төлөв */
     updateControls();
   }
@@ -452,16 +696,27 @@ function mountReal(root) {
   /* ---------- Ажиллагаа ---------- */
   function resetView(n) {
     events = []; endEvent = null; curN = n; snaps = [M.emptySnapshot(n)]; live = true; view = 0;
+    wstates = [M.emptyWaitState(n)]; warned = {}; lastEvWall = 0;
     renderStats(); scheduleRender();
   }
   function setRunning(r) { if (destroyed) return;
     running = r; setInputsDisabled(r);
-    $('start').disabled = r; $('stop').disabled = !r;
+    $('start').disabled = r; $('stop').disabled = !r; $('series').disabled = r;
+    $('wauto').disabled = r;
   }
   function finish(msg) { if (destroyed) return;
+    if (tick) { clearInterval(tick); tick = null; }
     setRunning(false); ctrl = null;
     $('status').textContent = msg || 'Дууссан.';
     scheduleRender();
+    /* Цуврал: амжилттай дууссан бол дараагийн N-ийг эхлүүлнэ */
+    if (seriesActive && endEvent && seriesQueue.length) {
+      $('n').value = seriesQueue.shift();
+      setTimeout(function () { if (!destroyed && seriesActive) start(); }, 400);
+    } else if (seriesActive) {
+      seriesActive = false; seriesQueue = [];
+      if (endEvent) $('status').textContent = 'Цуврал дууслаа — доорх "Туршилтын түүх ба харьцуулалт" хэсгийг харна уу.';
+    }
   }
   function handleLine(line) { if (destroyed) return;
     var ev; try { ev = JSON.parse(line); } catch (e) { return; }
@@ -472,16 +727,31 @@ function mountReal(root) {
     }
     events.push(ev);
     snaps.push(M.applyEvent(snaps[snaps.length - 1], ev));
-    if (ev.type === 'end') { endEvent = ev; renderStats(); }
+    wstates.push(M.applyWaitEvent(wstates[wstates.length - 1], ev));
+    lastEvWall = performance.now();
+    if (ev.type === 'end') {
+      endEvent = ev;
+      /* дуусах мөчид босгоос удаан hungry байсныг ч тэмдэглэнэ */
+      M.waitWarnings(wstates[wstates.length - 1], thr).forEach(function (w) { warned[w.id] = true; });
+      (ev.final_hungry_wait_ms || []).forEach(function (w, i) { if (w >= thr) warned[i] = true; });
+      renderStats();
+      saveRun(ev);
+    }
     scheduleRender();
   }
   function start() {
     var v = M.validateParams(readForm());
     showErrors(v.errors);
-    if (!v.ok) return;
+    if (!v.ok) { seriesActive = false; seriesQueue = []; return; }
+    runParams = v.params;
+    if (autoThr) { thr = M.defaultWarnThreshold(v.params); syncThr(); }
     resetView(v.params.n);
     setRunning(true);
-    $('status').textContent = 'Ажиллаж байна…';
+    if (tick) clearInterval(tick);
+    tick = setInterval(function () { if (running && live) scheduleRender(); }, 250);
+    $('status').textContent = seriesActive
+      ? 'Цуврал ажиллаж байна: N = ' + v.params.n + ' (' + (4 - seriesQueue.length) + '/4)…'
+      : 'Ажиллаж байна…';
     ctrl = new AbortController();
     fetch('/run?' + M.toQuery(v.params), { signal: ctrl.signal }).then(function (res) {
       if (!res.ok) {
@@ -509,7 +779,7 @@ function mountReal(root) {
       finish(e.name === 'AbortError' ? 'Хэрэглэгч зогсоосон.' : 'Алдаа гарлаа.');
     });
   }
-  function stop() { if (ctrl) ctrl.abort(); }
+  function stop() { seriesActive = false; seriesQueue = []; if (ctrl) ctrl.abort(); }
   function reset() {
     stop(); showErrors([]);
     var n = parseInt($('n').value, 10);
@@ -539,11 +809,63 @@ function mountReal(root) {
   }
   document.addEventListener('keydown', onKey);
 
+  /* ---------- Starvation-ийн эрсдэл: босго ---------- */
+  $('wnote').textContent = M.WARN_TEXT;
+  $('wauto').onchange = function () { autoThr = $('wauto').checked; refreshAutoThr(); syncThr(); scheduleRender(); };
+  $('wthr').onchange = function () {
+    var x = parseInt($('wthr').value, 10);
+    if (x > 0) { thr = x; scheduleRender(); } else syncThr();
+  };
+  $('emax').addEventListener('input', refreshAutoThr);
+
+  /* ---------- N = 5, 12, 32, 64 цуврал (шүүмжийн 8.2-т санал болгосон) ---------- */
+  $('series').onclick = function () {
+    if (running) return;
+    var v = M.validateParams(Object.assign(readForm(), { n: '5' }));
+    showErrors(v.errors);
+    if (!v.ok) return;
+    seriesActive = true; seriesQueue = [12, 32, 64];
+    $('n').value = 5;
+    start();
+  };
+
+  /* ---------- Туршилтын түүх ---------- */
+  $('hmetric').onchange = function () { hMetric = $('hmetric').value; renderHistory(); };
+  $('htable').onclick = function (e) {
+    var b = e.target.closest('.del');
+    if (b) { store.remove(b.getAttribute('data-id')); renderHistory(); }
+  };
+  $('hcsv').onclick = function () {   /* ﻿: Excel кирилл үсгийг зөв таних */
+    download('dp_runs.csv', '﻿' + M.runsToCSV(store.all()), 'text/csv;charset=utf-8');
+  };
+  $('hjson').onclick = function () {
+    download('dp_runs.json', JSON.stringify(store.all(), null, 2), 'application/json');
+  };
+  $('himport').onchange = function (e) {
+    var f = e.target.files && e.target.files[0];
+    if (!f) return;
+    f.text().then(function (t) {
+      var added = store.importMany(JSON.parse(t));
+      $('status').textContent = added + ' туршилт импортлолоо.';
+      renderHistory();
+    }).catch(function (err) { showErrors(['JSON импорт амжилтгүй: ' + err.message]); })
+      .then(function () { e.target.value = ''; });
+  };
+  $('hclear').onclick = function () {
+    if (confirm('Хадгалсан бүх туршилтыг устгах уу? Үүнийг буцаах боломжгүй.')) { store.clear(); renderHistory(); }
+  };
+  function onResize() { renderHistory(); }
+  window.addEventListener('resize', onResize);
+
   writeForm(PRESETS.book);
   resetView(5);
+  renderHistory();
   return function destroy() {   /* дэлгэцээс гарахад ажиллаж буй run-ыг зогсооно */
     destroyed = true;
+    seriesActive = false; seriesQueue = [];
+    if (tick) { clearInterval(tick); tick = null; }
     document.removeEventListener('keydown', onKey);
+    window.removeEventListener('resize', onResize);
     if (ctrl) ctrl.abort();
   };
 }

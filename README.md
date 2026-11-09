@@ -15,6 +15,7 @@ browser-based интерактив UI (state diagram) дээр дүрсэлнэ.
 
 ```
 ├── src/dp.c          # Үндсэн C/pthread хэрэгжилт (monitor + naive)
+├── src/fairness.h    # end event-ийн шударга байдлын үзүүлэлт (Jain, min/max, хүлээлт)
 ├── Makefile          # all / test / tsan / memcheck / serve / clean
 ├── ui/
 │   ├── index.html    # 5 алхамтай UI: Танилцуулга → Дүрэм → Deadlock → Шийдэл → Бодит туршилт (state diagram)
@@ -22,6 +23,8 @@ browser-based интерактив UI (state diagram) дээр дүрсэлнэ.
 │   └── server.py       # localhost-д ажилладаг NDJSON streaming сервер
 ├── tests/
 │   ├── check_log.py    # dp-ийн гаралтын инвариант шалгагч
+│   ├── check_fairness.py # end event-ийн fairness талбарыг дахин тооцож тулгах шалгагч
+│   ├── test_fairness.c  # src/fairness.h-ийн unit тест
 │   ├── test_model.js    # model.js-ийн unit тест (Node)
 │   ├── run_tests.sh      # бүх автомат шалгалтыг ажиллуулагч (`make test`)
 │   └── examples/          # жишээ гаралт (.jsonl) лог файлууд
@@ -73,11 +76,44 @@ make serve
 7. UI серверийн `/health`, `/`, `/run`, буруу параметрийн шалгалт, гадны Host/Origin-той `/run` хүсэлтийг 403-аар татгалзах эсэх
 8. UI серверийн Stop (холболт тасрах) — dp процесс slot leak-гүйгээр зогсдог эсэх (регрессийн тест, доор "Known issues"-ийг үз)
 9. **ThreadSanitizer** (`monitor` БА `naive` хоёуланд нь) — race condition тухайн ажиллагаанд илрээгүй
+10. **Fairness үзүүлэлт** (гадаад шүүмж, Suggestion 1) — `src/fairness.h`-ийн unit тест, мөн 3–5-р алхмын бодит логуудын `end` event-ийн Jain / min-max / дундаж / хамгийн их хүлээлтийг `tests/check_fairness.py` Python-оор дахин тооцож тулгана (naive deadlock-д хэн ч идээгүй тул `null`)
 
-Нийт 19 автомат шалгалт. Нэмэлтээр (`make test`-д ОРОХГҮЙ, гар аргаар ажиллуулдаг):
+Нийт 23 автомат шалгалт. Нэмэлтээр (`make test`-д ОРОХГҮЙ, гар аргаар ажиллуулдаг):
 `make memcheck` → valgrind **helgrind** (race) болон **leak-check** (санах ойн
 алдагдал), `monitor` ба `naive` хоёуланд нь — дөрвөн команд, давтан туршилтад
 цэвэр.
+
+## Шударга байдлын шинжилгээ ба туршилтын түүх
+
+Гадаад шүүмжийн (IV-2-14) хоёр саналын хэрэгжилт.
+
+**1. Starvation-ийн шинжилгээ.** `end` event-д одоо байгаа `meals`, `avg_wait_ms`,
+`max_wait_ms`, `final_hungry_wait_ms`-ийн хажууд дараах талбарууд нэмэгдсэн
+(`tests/check_log.py`-ийн инвариантуудад нөлөөгүй):
+
+| Талбар | Утга |
+|---|---|
+| `jain_meals` | Jain's Fairness Index (Σm)²/(n·Σm²); 1 = бүгд тэнцүү, 1/n = ганцхан нь идсэн |
+| `min_max_ratio` | min(meals)/max(meals); 0 = хэн нэг нь огт идээгүй |
+| `jain_avg_wait` | идсэн philosopher-уудын дундаж хүлээлтийн Jain индекс |
+| `overall_avg_wait_ms` | Σ хүлээлт / Σ хооллолт |
+| `overall_max_wait_ms`, `worst_wait_id` | хамгийн их хүлээлт (дуусахад hungry байсныг оруулна) ба түүнийг үүсгэсэн philosopher |
+
+Хэн ч идээгүй үед (naive deadlock) Jain болон min/max нь `null`.
+
+UI-ийн "Бодит туршилт" дэлгэцэд тогтоосон босгоос (анхдагч 4 × идэх max) удаан
+`hungry` байгаа philosopher ширээн дээр хүрэн тасархай хүрээгээр, "Удаан хүлээлт"
+картад жагсаалтаар, статистикийн хүснэгтэд ⚠ тэмдгээр харагдана. Энэ нь
+**starvation-ийн эрсдэл бөгөөд батлагдсан starvation биш** гэдгийг UI дээр
+тайлбарласан. Replay үед ч тухайн мөчийн анхааруулга харагдана.
+
+**2. Туршилтын түүх ба харьцуулалт.** Дууссан туршилт бүр хөтчийн `localStorage`-д
+хадгалагдана. "Туршилтын түүх ба харьцуулалт" хэсэгт хүснэгт болон график
+(философичдын тоо N ↔ хооллолт, throughput, дундаж/хамгийн их хүлээлт, Jain,
+min/max) харагдана. Графикийн нэг шугам нь ижил алгоритм ба бодох/идэх/хугацааны
+тохиргоо, тиймээс зөвхөн N өөр туршилтуудыг л холбоно. **"N = 5, 12, 32, 64
+цуврал"** товч одоогийн тохиргоогоор дөрвөн туршилтыг дараалан ажиллуулна.
+CSV (Excel-д кирилл зөв) болон JSON экспорт/импорт боломжтой.
 
 ## Known issues
 

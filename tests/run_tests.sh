@@ -145,6 +145,26 @@ else
   echo "  --  tsan build амжилтгүй, алгаслаа"
 fi
 
+# Гадаад шүүмж (IV-2-14), Suggestion 1: end event-ийн fairness үзүүлэлт
+# (src/fairness.h). 3–5-р хэсгийн бодит логуудыг дахин ашиглаж, dp.c-ийн гаргасан
+# Jain / min-max / avg / max утгыг Python-оор дахин тооцож тулгана.
+echo "== 9) fairness үзүүлэлт (Jain, min/max, хүлээлт) ========"
+if "${CC:-cc}" -std=gnu11 -Wall -Wextra -Werror -Isrc tests/test_fairness.c -o build/test_fairness -lm > /tmp/dp_fair_build.log 2>&1 \
+   && ./build/test_fairness > /tmp/dp_fair_unit.log 2>&1; then
+  pass "fairness.h unit тест ($(tail -1 /tmp/dp_fair_unit.log))"
+else
+  fail "fairness.h unit тест тэнцсэнгүй"; cat /tmp/dp_fair_build.log /tmp/dp_fair_unit.log
+fi
+python3 tests/check_fairness.py /tmp/dp_monitor.log > /tmp/dp_fair_monitor.log 2>&1 \
+  && pass "monitor: end-ийн fairness талбарууд зөв ($(cat /tmp/dp_fair_monitor.log))" \
+  || { fail "monitor: fairness талбар буруу"; cat /tmp/dp_fair_monitor.log; }
+python3 tests/check_fairness.py --expect-null /tmp/dp_naive.log > /tmp/dp_fair_naive.log 2>&1 \
+  && pass "naive deadlock: хэн ч идээгүй тул Jain/min-max null (тодорхойгүй)" \
+  || { fail "naive deadlock: fairness талбар буруу"; cat /tmp/dp_fair_naive.log; }
+python3 tests/check_fairness.py /tmp/dp_n64.log > /tmp/dp_fair_n64.log 2>&1 \
+  && pass "n=64: fairness талбарууд зөв" \
+  || { fail "n=64: fairness талбар буруу"; cat /tmp/dp_fair_n64.log; }
+
 echo "========================================================"
 echo "Нийт: $PASS OK, $FAIL FAIL"
 [ "$FAIL" -eq 0 ]
