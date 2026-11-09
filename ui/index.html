@@ -249,7 +249,7 @@ nav.bottom .where{flex:1;text-align:center;color:var(--muted);font-size:14px;fon
       <button type="button" data-preset="fast">Хурдан demo</button>
       <button type="button" data-preset="many">12 philosopher</button>
       <button type="button" data-preset="deadlock">Deadlock demo</button>
-      <button type="button" data-preset="starve" title="monitor, n=12, бодох хугацаа 0: тэгш дугаартай philosopher-ууд бараг иддэггүй — starvation-ийн анхааруулгыг харуулна">Starvation demo</button>
+      <button type="button" data-preset="starve" title="monitor, n=12, бодох хугацаа 0: philosopher-уудын хагас нь (сондгой эсвэл тэгш дугаартай нь ээлжлэн) удаан хугацаанд иддэггүй — starvation-ийн анхааруулгыг харуулна">Starvation demo</button>
     </div>
     <label for="algo">Алгоритм</label>
     <select id="algo">
@@ -313,7 +313,7 @@ nav.bottom .where{flex:1;text-align:center;color:var(--muted);font-size:14px;fon
       <label for="wthr">Анхааруулах босго (мс)</label>
       <div class="wrow">
         <input id="wthr" type="number" min="1" step="100" disabled>
-        <label class="chk"><input id="wauto" type="checkbox" checked> авто (4 × идэх max)</label>
+        <label class="chk"><input id="wauto" type="checkbox" checked> авто (4 × идэх max, доод тал 500)</label>
       </div>
       <ul id="wlist" aria-live="polite"></ul>
       <p class="wnote" id="wnote"></p>
@@ -373,8 +373,8 @@ function mountReal(root) {
     fast:     { algo: 'monitor', n: 5,  tmin: 150,  tmax: 500,  emin: 150,  emax: 500,  dur: 15000, seed: 1, grab: 100 },
     many:     { algo: 'monitor', n: 12, tmin: 200,  tmax: 700,  emin: 200,  emax: 700,  dur: 15000, seed: 7, grab: 100 },
     deadlock: { algo: 'naive',   n: 5,  tmin: 0,    tmax: 0,    emin: 300,  emax: 600,  dur: 8000,  seed: 1, grab: 300 },
-    /* monitor-ийн starvation: think=0 ба тэгш n үед сондгой philosopher-ууд ээлжлэн давамгайлж,
-     * тэгш дугаартайнууд бараг иддэггүй (docs/Report.docx, 8–9-р хэсэг) */
+    /* monitor-ийн starvation: think=0 ба тэгш n үед нэг бүлэг (сондгой эсвэл тэгш дугаартай)
+     * давамгайлж, нөгөө бүлэг нь хэдэн арван секунд иддэггүй (docs/Report.docx, 8–9-р хэсэг) */
     starve:   { algo: 'monitor', n: 12, tmin: 0,    tmax: 0,    emin: 10,   emax: 50,   dur: 10000, seed: 1, grab: 100 }
   };
 
@@ -411,7 +411,7 @@ function mountReal(root) {
     syncGrab();
     refreshAutoThr();
   }
-  /* "авто" босго = 4 × идэх max; тохиргоо өөрчлөгдөхөд дагаж шинэчлэгдэнэ */
+  /* "авто" босго = max(500, 4 × идэх max) мс; тохиргоо өөрчлөгдөхөд дагаж шинэчлэгдэнэ */
   function refreshAutoThr() {
     if (!autoThr || running) return;
     thr = M.defaultWarnThreshold({ emax: $('emax').value });
