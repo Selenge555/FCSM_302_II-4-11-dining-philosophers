@@ -159,12 +159,227 @@
     });
   }
 
+  /* =====================================================================
+   * Гадаад шүүмж (IV-2-14), Suggestion 1: шударга байдал ба starvation-ийн ЭРСДЭЛ
+   * ===================================================================== */
+
+  /* Jain's Fairness Index: (Σx)² / (n·Σx²) ∈ [1/n, 1]. Бүгд 0 бол null. */
+  function jainIndex(xs) {
+    if (!xs || !xs.length) return null;
+    var s = 0, q = 0;
+    for (var i = 0; i < xs.length; i++) { s += xs[i]; q += xs[i] * xs[i]; }
+    return q > 0 ? (s * s) / (xs.length * q) : null;
+  }
+  function minMaxRatio(xs) {
+    if (!xs || !xs.length) return null;
+    var mx = Math.max.apply(null, xs);
+    return mx > 0 ? Math.min.apply(null, xs) / mx : null;
+  }
+
+  /* end event -> fairness хураангуй. dp.c (src/fairness.h) тооцсон талбарууд
+   * байвал түүнийг, үгүй бол (хуучин лог, tests/examples/*) массиваас тооцно. */
+  function fairnessSummary(end) {
+    var meals = end.meals || [], avg = end.avg_wait_ms || [], mx = end.max_wait_ms || [];
+    var fw = end.final_hungry_wait_ms || [];
+    var total = 0, wsum = 0, eaters = [], worst = 0, worstId = -1;
+    for (var i = 0; i < meals.length; i++) {
+      total += meals[i];
+      if (meals[i] > 0) { wsum += (avg[i] || 0) * meals[i]; eaters.push(avg[i] || 0); }
+      var w = Math.max(mx[i] || 0, fw[i] || 0);
+      if (w > worst) { worst = w; worstId = i; }
+    }
+    var c = Object.prototype.hasOwnProperty.call(end, 'jain_meals');
+    return {
+      source: c ? 'dp' : 'ui',
+      totalMeals: total,
+      jain: c ? end.jain_meals : jainIndex(meals),
+      minMax: c ? end.min_max_ratio : minMaxRatio(meals),
+      jainAvgWait: c ? end.jain_avg_wait : (eaters.length >= 2 ? jainIndex(eaters) : null),
+      avgWait: c ? end.overall_avg_wait_ms : (total ? wsum / total : 0),
+      maxWait: c ? end.overall_max_wait_ms : worst,
+      worstId: c ? end.worst_wait_id : worstId
+    };
+  }
+
+  /* Анхааруулах босгын анхдагч утга (мс): monitor-д хүлээлт ихэвчлэн 1–2×emax
+   * байдаг тул 4×emax-аас удаан бол "анхаарах", доод хязгаар 500 мс. */
+  function defaultWarnThreshold(p) {
+    var e = p ? Number(p.emax) : NaN;
+    return Math.max(500, 4 * (Number.isFinite(e) ? e : 200));
+  }
+
+  /* hungry эхэлсэн мөчийг дагах төлөв. applyEvent-ийн snapshot-оос ТУСДАА
+   * (snapshot-ийн бүтэц, түүний тест өөрчлөгдөхгүй). */
+  function emptyWaitState(n) {
+    var s = [];
+    for (var i = 0; i < n; i++) s.push(null);
+    return { t: 0, since: s, deadlock: false };
+  }
+
+  /* applyEvent-тэй ИЖИЛ зарчмаар deadlock-ийн дараах cleanup state event-үүд
+   * hungry эхэлсэн мөчийг өөрчлөхгүй (өөрчилбөл deadlock-д орсон philosopher-ийн
+   * анхааруулга cleanup-аар арилж, эрсдэл далдлагдана). t нь харин урагшилна. */
+  function applyWaitEvent(ws, ev) {
+    var next = { t: ws.t, since: ws.since.slice(), deadlock: ws.deadlock };
+    if (typeof ev.t === 'number' && ev.t > next.t) next.t = ev.t;
+    if (ev.type === 'state' && !ws.deadlock) {
+      if (ev.state === 'hungry') {
+        /* naive: hungry -> hungry (fork авсан) үед анхны мөч хэвээр */
+        if (next.since[ev.id] === null || next.since[ev.id] === undefined) next.since[ev.id] = ev.t;
+      } else {
+        next.since[ev.id] = null;
+      }
+    } else if (ev.type === 'deadlock') {
+      next.deadlock = true;
+    }
+    return next;
+  }
+
+  function buildWaitStates(n, events) {
+    var out = [emptyWaitState(n)];
+    events.forEach(function (ev) { out.push(applyWaitEvent(out[out.length - 1], ev)); });
+    return out;
+  }
+
+  /* Philosopher бүрийн одоогийн (дуусаагүй) hungry хүлээлт, мс.
+   * now: live үед event хүлээлгүй цаг урагшлуулах (заавал биш). */
+  function hungryWaits(ws, now) {
+    var t = typeof now === 'number' && now > ws.t ? now : ws.t;
+    return ws.since.map(function (h) { return h === null || h === undefined ? 0 : Math.max(0, t - h); });
+  }
+
+  /* Босгоос удаан hungry байгаа philosopher-ууд: [{id, waitMs}] */
+  function waitWarnings(ws, thresholdMs, now) {
+    var out = [];
+    hungryWaits(ws, now).forEach(function (w, i) { if (w > 0 && w >= thresholdMs) out.push({ id: i, waitMs: w }); });
+    return out;
+  }
+
+  var WARN_TEXT = 'Энэ анхааруулга нь starvation-ийн ЭРСДЭЛ бөгөөд батлагдсан starvation биш. ' +
+    'Philosopher тогтоосон босгоос удаан hungry төлөвт байгааг л илтгэнэ: хөршүүд нь ээлжлэн идэх, ' +
+    'идэх хугацаа урт, philosopher-ийн тоо их байх зэргээс удаан хүлээлт түр зуур үүсэх нь хэвийн. ' +
+    'Starvation гэдэг нь philosopher хязгааргүй удаан идэж чадахгүй үлдэхийг хэлдэг тул нэг ажиглалтаар ' +
+    'батлах боломжгүй — олон, урт туршилтын хамгийн их хүлээлт, Jain индекс, min/max харьцааг хамт харж дүгнэнэ.';
+
+  /* =====================================================================
+   * Suggestion 2: туршилтын түүх ба харьцуулалт
+   * ===================================================================== */
+
+  /* validateParams().params + end event -> хадгалах нэг бичлэг */
+  function runRecord(params, end, warnCount, thresholdMs) {
+    var p = params || {}, f = fairnessSummary(end), meals = end.meals || [];
+    var n = meals.length || p.n || 0, elapsed = Math.max(1, end.t || p.dur || 1);
+    return {
+      id: Date.now().toString(36) + Math.random().toString(36).slice(2, 7),
+      savedAt: new Date().toISOString(),
+      algo: String(p.algo || '?'), n: n,
+      tmin: p.tmin, tmax: p.tmax, emin: p.emin, emax: p.emax, dur: p.dur, seed: p.seed, grab: p.grab,
+      reason: end.reason || '?', elapsedMs: elapsed,
+      totalMeals: f.totalMeals, mealsPerPhil: n ? f.totalMeals / n : 0,
+      throughput: f.totalMeals / (elapsed / 1000),
+      avgWait: f.avgWait, maxWait: f.maxWait, jain: f.jain, minMax: f.minMax,
+      minMeals: meals.length ? Math.min.apply(null, meals) : 0,
+      maxMeals: meals.length ? Math.max.apply(null, meals) : 0,
+      warnCount: warnCount || 0, warnThresholdMs: thresholdMs || null
+    };
+  }
+
+  /* Графикийн нэг шугам = ижил алгоритм + бодох/идэх/хугацаа(+grab).
+   * Ингэснээр зөвхөн philosopher-ийн тоо (N) өөр туршилтууд л холбогдоно. */
+  function seriesKey(r) {
+    return r.algo + ' · бодох ' + r.tmin + '–' + r.tmax + ' · идэх ' + r.emin + '–' + r.emax +
+      ' · ' + r.dur + ' мс' + (r.algo === 'naive' ? ' · grab ' + r.grab : '');
+  }
+
+  /* runs -> {xs: [N...], series: [{key, points: [{n, y, count}]}]};
+   * ижил шугам дахь ижил N-ийн давталтыг дундажлана, null утгыг алгасна. */
+  function buildSeries(runs, metric) {
+    var byKey = {}, order = [], xsSet = {};
+    runs.forEach(function (r) {
+      var y = r[metric];
+      if (y === null || y === undefined || !Number.isFinite(y)) return;
+      var k = seriesKey(r);
+      if (!byKey[k]) { byKey[k] = {}; order.push(k); }
+      var c = byKey[k][r.n] || (byKey[k][r.n] = { sum: 0, count: 0 });
+      c.sum += y; c.count++;
+      xsSet[r.n] = true;
+    });
+    var xs = Object.keys(xsSet).map(Number).sort(function (a, b) { return a - b; });
+    return {
+      xs: xs,
+      series: order.map(function (k) {
+        return {
+          key: k,
+          points: Object.keys(byKey[k]).map(Number).sort(function (a, b) { return a - b; })
+            .map(function (n) { var c = byKey[k][n]; return { n: n, y: c.sum / c.count, count: c.count }; })
+        };
+      })
+    };
+  }
+
+  var RUN_COLS = ['savedAt', 'algo', 'n', 'tmin', 'tmax', 'emin', 'emax', 'dur', 'seed', 'grab', 'reason',
+    'elapsedMs', 'totalMeals', 'mealsPerPhil', 'throughput', 'avgWait', 'maxWait', 'jain', 'minMax',
+    'minMeals', 'maxMeals', 'warnCount', 'warnThresholdMs'];
+
+  function runsToCSV(runs) {
+    function cell(v) {
+      if (v === null || v === undefined) return '';
+      var s = typeof v === 'number' ? String(Math.round(v * 10000) / 10000) : String(v);
+      return /[",\n]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s;
+    }
+    return [RUN_COLS.join(',')].concat(runs.map(function (r) {
+      return RUN_COLS.map(function (c) { return cell(r[c]); }).join(',');
+    })).join('\n');
+  }
+
+  /* Туршилтын түүхийн сан. storage нь localStorage-тэй ижил интерфэйстэй
+   * (getItem/setItem) эсвэл null (private mode г.м. — санах ойд л хадгална). */
+  function makeRunStore(storage, key, max) {
+    key = key || 'dp.runs.v1'; max = max || 200;
+    var mem = [];
+    function all() {
+      if (!storage) return mem.slice();
+      try { var v = JSON.parse(storage.getItem(key) || '[]'); return Array.isArray(v) ? v : []; }
+      catch (e) { return mem.slice(); }
+    }
+    function save(list) {
+      mem = list.slice(-max);
+      if (storage) { try { storage.setItem(key, JSON.stringify(mem)); } catch (e) { /* дүүрсэн */ } }
+    }
+    return {
+      all: all,
+      add: function (r) { var l = all(); l.push(r); save(l); return r; },
+      remove: function (id) { save(all().filter(function (r) { return r.id !== id; })); },
+      clear: function () { save([]); },
+      /* JSON-оос импорт: буруу бичлэг, давхардсан id-г алгасна. Нэмсэн тоог буцаана. */
+      importMany: function (arr) {
+        if (!Array.isArray(arr)) throw new Error('JSON массив биш байна');
+        var cur = all(), seen = {};
+        cur.forEach(function (r) { seen[r.id] = true; });
+        var ok = arr.filter(function (r) {
+          return r && typeof r === 'object' && typeof r.id === 'string' && !seen[r.id] &&
+            Number.isInteger(r.n) && r.n >= LIMITS.n[0] && r.n <= LIMITS.n[1] && ALGOS.indexOf(r.algo) >= 0;
+        });
+        save(cur.concat(ok));
+        return ok.length;
+      }
+    };
+  }
+
   var api = {
     LIMITS: LIMITS, ALGOS: ALGOS, COLORS: COLORS,
     validateParams: validateParams, toQuery: toQuery,
     emptySnapshot: emptySnapshot, applyEvent: applyEvent, buildSnapshots: buildSnapshots,
     philPos: philPos, philRadius: philRadius, forkPos: forkPos,
-    describeEvent: describeEvent, statsRows: statsRows
+    describeEvent: describeEvent, statsRows: statsRows,
+    /* fairness / starvation-ийн эрсдэл (Suggestion 1) */
+    jainIndex: jainIndex, minMaxRatio: minMaxRatio, fairnessSummary: fairnessSummary,
+    defaultWarnThreshold: defaultWarnThreshold, emptyWaitState: emptyWaitState,
+    applyWaitEvent: applyWaitEvent, buildWaitStates: buildWaitStates,
+    hungryWaits: hungryWaits, waitWarnings: waitWarnings, WARN_TEXT: WARN_TEXT,
+    /* туршилтын түүх ба харьцуулалт (Suggestion 2) */
+    runRecord: runRecord, seriesKey: seriesKey, buildSeries: buildSeries,
+    RUN_COLS: RUN_COLS, runsToCSV: runsToCSV, makeRunStore: makeRunStore
   };
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
   else root.DPModel = api;

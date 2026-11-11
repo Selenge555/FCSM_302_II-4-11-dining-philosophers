@@ -130,5 +130,109 @@ function eq(a, b, msg) {
   assert(fin.deadlock && fin.forks.every(f => f >= 0), 'naive жишээ лог: эцсийн snapshot-д бүх fork эзэнтэй (deadlock-ийн зураг)');
 }
 
+// =====================================================================
+// Гадаад шүүмж (IV-2-14), Suggestion 1: fairness ба starvation-ийн эрсдэл
+// =====================================================================
+const near = (a, b, eps) => Math.abs(a - b) < (eps || 1e-6);
+
+// --- jainIndex / minMaxRatio (src/fairness.h-тэй ижил утга) ---
+{
+  assert(near(M.jainIndex([8, 8, 6, 7, 7]), 0.98931, 1e-5), 'jainIndex: шүүмжийн [8,8,6,7,7] = 0.9893');
+  assert(near(M.jainIndex([5, 5, 5]), 1), 'jainIndex: тэнцүү = 1');
+  assert(near(M.jainIndex([9, 0, 0]), 1 / 3), 'jainIndex: ганцхан нь идсэн = 1/n');
+  eq(M.jainIndex([0, 0]), null, 'jainIndex: хэн ч идээгүй = null');
+  assert(near(M.minMaxRatio([8, 8, 6, 7, 7]), 0.75), 'minMaxRatio: 6/8');
+  eq(M.minMaxRatio([0, 0]), null, 'minMaxRatio: хэн ч идээгүй = null');
+}
+
+// --- fairnessSummary: dp-ийн талбар байвал түүнийг, үгүй бол тооцно ---
+{
+  const fromDp = M.fairnessSummary({ meals: [2, 2], avg_wait_ms: [1, 1], max_wait_ms: [1, 1],
+    jain_meals: 0.42, min_max_ratio: 0.1, jain_avg_wait: null, overall_avg_wait_ms: 3, overall_max_wait_ms: 99, worst_wait_id: 1 });
+  assert(fromDp.source === 'dp' && fromDp.jain === 0.42 && fromDp.maxWait === 99 && fromDp.worstId === 1,
+    'fairnessSummary: dp.c-ийн тооцсон утгыг ашиглана');
+  const old = M.fairnessSummary({ meals: [10, 0, 9], avg_wait_ms: [50, 0, 60], max_wait_ms: [120, 900, 140], final_hungry_wait_ms: [0, 900, 0] });
+  assert(old.source === 'ui' && near(old.avgWait, (500 + 540) / 19) && old.maxWait === 900 && old.worstId === 1 && old.minMax === 0,
+    'fairnessSummary: хуучин лог (талбаргүй) -> массиваас тооцно, дуусаагүй хүлээлт max-д орно');
+}
+
+// --- defaultWarnThreshold ---
+{
+  eq(M.defaultWarnThreshold({ emax: 3000 }), 12000, 'defaultWarnThreshold: 4×emax');
+  eq(M.defaultWarnThreshold({ emax: 10 }), 500, 'defaultWarnThreshold: доод хязгаар 500 мс');
+  eq(M.defaultWarnThreshold(null), 800, 'defaultWarnThreshold: params байхгүй үед ч ажиллана');
+}
+
+// --- wait state: удаан hungry анхааруулга ---
+{
+  let ws = M.emptyWaitState(2);
+  ws = M.applyWaitEvent(ws, { type: 'state', t: 100, id: 1, state: 'hungry', forks: [-1, -1] });
+  ws = M.applyWaitEvent(ws, { type: 'state', t: 1100, id: 0, state: 'thinking', forks: [-1, -1] });
+  eq(M.hungryWaits(ws), [0, 1000], 'hungryWaits: P1 1000 мс hungry');
+  eq(M.waitWarnings(ws, 800), [{ id: 1, waitMs: 1000 }], 'waitWarnings: босгоос (800) удаан -> анхааруулга');
+  eq(M.waitWarnings(ws, 1500), [], 'waitWarnings: босгоос богино -> анхааруулгагүй');
+  eq(M.waitWarnings(ws, 1500, 1700), [{ id: 1, waitMs: 1600 }], 'waitWarnings: live үед event хүлээлгүй цаг урагшилна');
+  const ws2 = M.applyWaitEvent(ws, { type: 'state', t: 1150, id: 1, state: 'eating', forks: [-1, 1] });
+  eq(M.waitWarnings(ws2, 800), [], 'waitWarnings: идэж эхэлмэгц анхааруулга арилна');
+  eq(ws.since[1], 100, 'applyWaitEvent: өмнөх төлөв immutable хэвээр');
+}
+{
+  // naive: hungry -> hungry (зүүн fork авсан) үед hungry эхэлсэн мөч хэвээр
+  let ws = M.emptyWaitState(1);
+  ws = M.applyWaitEvent(ws, { type: 'state', t: 10, id: 0, state: 'hungry', forks: [-1] });
+  ws = M.applyWaitEvent(ws, { type: 'state', t: 310, id: 0, state: 'hungry', forks: [0] });
+  eq(M.hungryWaits(ws), [300], 'applyWaitEvent: naive hungry->hungry эхний мөчийг хадгална');
+}
+{
+  // deadlock-ийн дараах cleanup event анхааруулгыг арилгахгүй (applyEvent-тэй нийцтэй)
+  const fs = require('fs');
+  const lines = fs.readFileSync(path.join(__dirname, 'examples', 'naive_deadlock_n5_sample.jsonl'), 'utf8')
+    .split('\n').filter(Boolean).map(l => JSON.parse(l)).filter(e => e.type !== 'exit');
+  const n = lines.find(e => e.type === 'config').n;
+  const wss = M.buildWaitStates(n, lines);
+  eq(wss.length, lines.length + 1, 'buildWaitStates: buildSnapshots-тэй ижил урт (replay-д индекс таарна)');
+  const last = wss[wss.length - 1];
+  assert(last.deadlock && M.hungryWaits(last).every(w => w > 0),
+    'buildWaitStates: naive жишээ лог — cleanup-ийн дараа ч бүх philosopher hungry хүлээлттэй');
+  assert(/ЭРСДЭЛ/.test(M.WARN_TEXT) && /батлагдсан starvation биш/.test(M.WARN_TEXT),
+    'WARN_TEXT: эрсдэл бөгөөд батлагдсан starvation биш гэдгийг тайлбарласан');
+}
+
+// =====================================================================
+// Suggestion 2: туршилтын түүх ба харьцуулалт
+// =====================================================================
+{
+  const p = M.validateParams({ algo: 'monitor', n: '4', tmin: '0', tmax: '50', emin: '10', emax: '50', dur: '2000', seed: '7', grab: '0' }).params;
+  const r = M.runRecord(p, { t: 2000, reason: 'timeout', meals: [2, 2, 2, 2], avg_wait_ms: [1, 1, 1, 1], max_wait_ms: [3, 3, 3, 3] }, 1, 500);
+  assert(r.n === 4 && r.emax === 50 && r.dur === 2000 && r.totalMeals === 8 && near(r.throughput, 4) && near(r.jain, 1) && r.warnCount === 1,
+    'runRecord: params + end -> бичлэг (throughput = хооллолт/сек)');
+}
+{
+  const b = { algo: 'monitor', tmin: 0, tmax: 50, emin: 10, emax: 50, dur: 1000, grab: 0 };
+  const runs = [Object.assign({}, b, { n: 12, avgWait: 30 }), Object.assign({}, b, { n: 5, avgWait: 10 }),
+    Object.assign({}, b, { n: 5, avgWait: 20 }), Object.assign({}, b, { emax: 500, n: 5, avgWait: 99 }),
+    Object.assign({}, b, { n: 32, avgWait: null })];
+  const s = M.buildSeries(runs, 'avgWait');
+  eq(s.xs, [5, 12], 'buildSeries: x тэнхлэг = N (null утгатайг алгасна)');
+  eq(s.series.length, 2, 'buildSeries: өөр тохиргоо = өөр шугам');
+  eq(s.series[0].points.map(q => [q.n, q.y, q.count]), [[5, 15, 2], [12, 30, 1]], 'buildSeries: ижил N-ийн давталтыг дундажлана');
+}
+{
+  const csv = M.runsToCSV([{ algo: 'a,b', n: 5, jain: null, throughput: 1.234567 }]).split('\n');
+  eq(csv[0], M.RUN_COLS.join(','), 'runsToCSV: толгой мөр');
+  assert(csv[1].indexOf('"a,b",5,') >= 0 && csv[1].indexOf('1.2346') >= 0, 'runsToCSV: таслал escape, тоо тоймлолт');
+}
+{
+  const mem = {}, fake = { getItem: k => (k in mem ? mem[k] : null), setItem: (k, v) => { mem[k] = v; } };
+  const st = M.makeRunStore(fake);
+  st.add({ id: 'a', algo: 'monitor', n: 5 });
+  eq(M.makeRunStore(fake).all().length, 1, 'makeRunStore: хуудас дахин ачаалсны дараа localStorage-аас уншина');
+  eq(st.importMany([{ id: 'b', algo: 'naive', n: 5 }, { id: 'a', algo: 'monitor', n: 5 }, { id: 'c', algo: 'evil', n: 5 }, { id: 'd', algo: 'monitor', n: 99 }]), 1,
+    'makeRunStore.importMany: давхардсан id, буруу алгоритм, хязгаараас гарсан N-ийг алгасна');
+  st.remove('a'); eq(st.all().map(r => r.id), ['b'], 'makeRunStore.remove');
+  const nostore = M.makeRunStore(null); nostore.add({ id: 'x', algo: 'monitor', n: 2 });
+  eq(nostore.all().length, 1, 'makeRunStore: localStorage байхгүй (private mode) үед санах ойд ажиллана');
+}
+
 console.log(`${passed} passed, ${failed} failed`);
 process.exit(failed ? 1 : 0);

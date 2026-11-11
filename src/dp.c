@@ -30,6 +30,8 @@
 #include <string.h>
 #include <time.h>
 
+#include "fairness.h"   /* end event-ийн fairness үзүүлэлт (Jain, min/max, ...) */
+
 #define MAX_PHIL 64
 #define MAX_MS 600000
 
@@ -356,7 +358,13 @@ int main(int argc, char **argv) {
     for (int i = 0; i < cfg.n; i++) printf("%ld%s", wait_max[i], i < cfg.n - 1 ? "," : "");
     printf("],\"final_hungry_wait_ms\":[");
     for (int i = 0; i < cfg.n; i++) printf("%ld%s", final_hungry_wait[i], i < cfg.n - 1 ? "," : "");
-    printf("]}\n");
+    printf("]");
+    /* Шударга байдлын үзүүлэлт (гадаад шүүмж, Suggestion 1). Бүх thread join
+     * хийгдсэн тул meals/wait_total/wait_max-ийг lock-гүй уншихад аюулгүй.
+     * wait_max нь дээр final_hungry_wait-ийг аль хэдийн шингээсэн. */
+    fairness_t fair = fairness_compute(cfg.n, meals, wait_total, wait_max);
+    fairness_print_json(stdout, &fair);
+    printf("}\n");
     fflush(stdout);
     return deadlock ? 3 : 0;
 }

@@ -6,7 +6,7 @@ LDFLAGS += -pthread
 
 all: build/dp
 
-build/dp: src/dp.c
+build/dp: src/dp.c src/fairness.h
 	@mkdir -p build
 	$(CC) $(CFLAGS) $< -o $@ $(LDFLAGS)
 
@@ -19,7 +19,7 @@ test: all
 	bash tests/run_tests.sh
 
 # ThreadSanitizer-тэй хувилбар (race condition шалгах)
-tsan: src/dp.c
+tsan: src/dp.c src/fairness.h
 	@mkdir -p build
 	$(CC) -std=gnu11 -Wall -Wextra -g -O1 -fsanitize=thread $< -o build/dp_tsan $(LDFLAGS)
 
